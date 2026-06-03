@@ -18,7 +18,7 @@ class CustomUser(AbstractUser):
     ]
 
     image = models.ImageField(upload_to='profile_pics' ,null = True , blank= True)
-    phone_number = PhoneNumberField(blank=True, null=True, region="DE", verbose_name="Phone Number")
+    phone_number = PhoneNumberField(blank=True, null=True, region="DE", unique=True, verbose_name="Phone Number")
     street = models.CharField(max_length=255 , null=False , blank=False , verbose_name='Street Name')
     post_number = models.CharField(max_length=10 ,blank=False , null=False , verbose_name='Postal CodeS')
     house_number = models.CharField(max_length=5 ,null=False ,blank=False ,verbose_name='House Number')

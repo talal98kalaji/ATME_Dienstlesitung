@@ -18,6 +18,7 @@ ALLOWED_HOSTS = [env('ALLOWED_HOSTS')]
 
 
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -32,7 +33,8 @@ INSTALLED_APPS = [
     'drf_spectacular',
     'phonenumber_field',
     'accounts',
-    'customers'
+    'customers',
+    'projects'
 ]
 
 MIDDLEWARE = [
@@ -66,8 +68,7 @@ TEMPLATES = [
 WSGI_APPLICATION = 'atmedjango.wsgi.application'
 
 AUTH_USER_MODEL = 'accounts.CustomUser'
-# Database
-# https://docs.djangoproject.com/en/6.0/ref/settings/#databases
+
 
 DATABASES = {
     'default': {
@@ -102,9 +103,6 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
-
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
@@ -143,3 +141,12 @@ CELERY_BROKER_URL = env('CELERY_BROKER_URL', default='redis://localhost:6379/0')
 CELERY_RESULT_BACKEND = env('CELERY_RESULT_BACKEND', default='redis://localhost:6379/0')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
+
+ASGI_APPLICATION = 'atmedjango.asgi.application'
+
+#WILL CHANGED WHEN DEPLOY
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer"
+    }
+}

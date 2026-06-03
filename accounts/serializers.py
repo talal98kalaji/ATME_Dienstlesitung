@@ -13,6 +13,7 @@ class AccountsSerializers(serializers.ModelSerializer):
         exclude = ['password']
 
 
+
 class EmployeeCreateSerializer(serializers.ModelSerializer):
     password_confirm = serializers.CharField(
         write_only=True, 
@@ -37,9 +38,28 @@ class EmployeeCreateSerializer(serializers.ModelSerializer):
         password_confirm = data.get('password_confirm')
         if password != password_confirm:
             raise serializers.ValidationError(
-                {"password": "password not match , check theme then try again"}
+                {"password": "Password does not match, check them then try again."}
             )
         
+
+        username = data.get('username')
+        if username and User.objects.filter(username=username).exists():
+            raise serializers.ValidationError(
+                {"username": "this username is already taken"}
+            )
+
+        email = data.get('email')
+        if email and User.objects.filter(email=email).exists():
+            raise serializers.ValidationError(
+                {"email": "this email is already used"}
+            )
+
+        phone_number = data.get('phone_number')
+        if phone_number and User.objects.filter(phone_number=phone_number).exists():
+            raise serializers.ValidationError(
+                {"phone_number": "this number is already used"}
+            )
+
         return data
 
     def create(self, validated_data):
