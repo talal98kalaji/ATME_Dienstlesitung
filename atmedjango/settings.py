@@ -19,6 +19,7 @@ ALLOWED_HOSTS = [env('ALLOWED_HOSTS')]
 
 INSTALLED_APPS = [
     'daphne',
+    'channels',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -34,7 +35,9 @@ INSTALLED_APPS = [
     'phonenumber_field',
     'accounts',
     'customers',
-    'projects'
+    'projects',
+    'operations',
+    'chat',
 ]
 
 MIDDLEWARE = [
