@@ -150,6 +150,14 @@ ASGI_APPLICATION = 'atmedjango.asgi.application'
 #WILL CHANGED WHEN DEPLOY
 CHANNEL_LAYERS = {
     "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer"
-    }
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [
+                env(
+                    "CHAT_REDIS_URL",
+                    default="redis://localhost:6379/1",
+                )
+            ],
+        },
+    },
 }

@@ -6,12 +6,11 @@ from rest_framework.pagination import PageNumberPagination
 from .models import Site, Assignment
 from .serializers import SiteSerializer, AssignmentSerializer
 from .filters import SiteFilter, AssignmentFilter
-from accounts.permissions import IsDataEntryOrSuperUser
-
+from accounts.permissions import IsWorkAdministrator
 
 # Sites
 @api_view(['GET'])
-@permission_classes([IsDataEntryOrSuperUser])
+@permission_classes([IsWorkAdministrator])
 def get_all_sites(request):
     queryset = Site.objects.select_related('customer').all()
     filterset = SiteFilter(request.GET, queryset=queryset)
@@ -26,7 +25,7 @@ def get_all_sites(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsDataEntryOrSuperUser])
+@permission_classes([IsWorkAdministrator])
 def create_site(request):
     serializer = SiteSerializer(data=request.data)
     if serializer.is_valid():
@@ -36,7 +35,7 @@ def create_site(request):
 
 
 @api_view(['GET'])
-@permission_classes([IsDataEntryOrSuperUser])
+@permission_classes([IsWorkAdministrator])
 def get_site_detail(request, pk):
     try:
         site = Site.objects.get(pk=pk)
@@ -47,7 +46,7 @@ def get_site_detail(request, pk):
 
 
 @api_view(['PUT', 'PATCH'])
-@permission_classes([IsDataEntryOrSuperUser])
+@permission_classes([IsWorkAdministrator])
 def update_site(request, pk):
     try:
         site = Site.objects.get(pk=pk)
@@ -62,7 +61,7 @@ def update_site(request, pk):
 
 
 @api_view(['DELETE'])
-@permission_classes([IsDataEntryOrSuperUser])
+@permission_classes([IsWorkAdministrator])
 def delete_site(request, pk):
     try:
         site = Site.objects.get(pk=pk)
@@ -73,7 +72,7 @@ def delete_site(request, pk):
 
 
 @api_view(['GET'])
-@permission_classes([IsDataEntryOrSuperUser])
+@permission_classes([IsWorkAdministrator])
 def site_assignments(request, pk):
     """All employees assigned to a given site."""
     try:
@@ -87,7 +86,7 @@ def site_assignments(request, pk):
 
 # Assignments (linking an employee to a site)
 @api_view(['GET'])
-@permission_classes([IsDataEntryOrSuperUser])
+@permission_classes([IsWorkAdministrator])
 def get_all_assignments(request):
     queryset = Assignment.objects.select_related('site', 'employee').all()
     filterset = AssignmentFilter(request.GET, queryset=queryset)
@@ -102,7 +101,7 @@ def get_all_assignments(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsDataEntryOrSuperUser])
+@permission_classes([IsWorkAdministrator])
 def create_assignment(request):
     serializer = AssignmentSerializer(data=request.data)
     if serializer.is_valid():
@@ -112,7 +111,7 @@ def create_assignment(request):
 
 
 @api_view(['PUT', 'PATCH'])
-@permission_classes([IsDataEntryOrSuperUser])
+@permission_classes([IsWorkAdministrator])
 def update_assignment(request, pk):
     try:
         assignment = Assignment.objects.get(pk=pk)
@@ -127,7 +126,7 @@ def update_assignment(request, pk):
 
 
 @api_view(['DELETE'])
-@permission_classes([IsDataEntryOrSuperUser])
+@permission_classes([IsWorkAdministrator])
 def delete_assignment(request, pk):
     try:
         assignment = Assignment.objects.get(pk=pk)

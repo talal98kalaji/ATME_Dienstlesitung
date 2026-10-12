@@ -5,12 +5,11 @@ from rest_framework.pagination import PageNumberPagination
 from .models import Customer
 from .serializers import CustomerListDetailSerializer, CustomerCreateSerializer, CustomerUpdateSerializer
 from .filters import CustomerFilter
-from accounts.permissions import IsDataEntryOrSuperUser
-
+from accounts.permissions import IsSuperuserOrManager
 
 
 @api_view(['GET'])
-@permission_classes([IsDataEntryOrSuperUser])
+@permission_classes([IsSuperuserOrManager])
 def get_all_customers(request):
     queryset = Customer.objects.all().order_by('-id')    
     filterset = CustomerFilter(request.GET, queryset=queryset)
@@ -26,7 +25,7 @@ def get_all_customers(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsDataEntryOrSuperUser])
+@permission_classes([IsSuperuserOrManager])
 def create_customer(request):
     serializer = CustomerCreateSerializer(data=request.data, context={'request': request})
     if serializer.is_valid():
@@ -39,7 +38,7 @@ def create_customer(request):
 
 
 @api_view(['GET'])
-@permission_classes([IsDataEntryOrSuperUser])
+@permission_classes([IsSuperuserOrManager])
 def get_customer_detail(request, pk):
     try:
         customer = Customer.objects.get(pk=pk)
@@ -50,7 +49,7 @@ def get_customer_detail(request, pk):
 
 
 @api_view(['PUT', 'PATCH'])
-@permission_classes([IsDataEntryOrSuperUser])
+@permission_classes([IsSuperuserOrManager])
 def update_customer(request, pk):
     try:
         customer = Customer.objects.get(pk=pk)
@@ -69,7 +68,7 @@ def update_customer(request, pk):
 
 
 @api_view(['DELETE'])
-@permission_classes([IsDataEntryOrSuperUser])
+@permission_classes([IsSuperuserOrManager])
 def delete_customer(request, pk):
     try:
         customer = Customer.objects.get(pk=pk)

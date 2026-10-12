@@ -1,16 +1,27 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.utils.translation import gettext_lazy as _
+from .storage import PrivateChatStorage
+
 
 User = get_user_model()
 
 
 class Conversation(models.Model):
-    GROUP = 'GROUP'
-    DIRECT = 'DIRECT'
+    GROUP = "GROUP"
+    DIRECT = "DIRECT"
+
     TYPE_CHOICES = [
-        (GROUP, _('Group')),
-        (DIRECT, _('Direct')),
+        (GROUP, _("Group")),
+        (DIRECT, _("Direct")),
+    ]
+
+    ADMIN_ONLY = "ADMIN_ONLY"
+    ALL_MEMBERS = "ALL_MEMBERS"
+
+    SEND_POLICY_CHOICES = [
+        (ADMIN_ONLY, _("Group manager only")),
+        (ALL_MEMBERS, _("All members")),
     ]
 
     conversation_type = models.CharField(max_length=10, choices=TYPE_CHOICES, default=GROUP)
@@ -63,7 +74,7 @@ class Message(models.Model):
     conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name='messages')
     sender = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='sent_messages')
     content = models.TextField(blank=True, verbose_name=_('Message Content'))
-    image = models.ImageField(upload_to=message_image_path, null=True, blank=True, verbose_name=_('Image'))
+    image = models.ImageField( storage=PrivateChatStorage(), upload_to=message_image_path, null=True, blank=True, verbose_name=_("Image"),)    
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

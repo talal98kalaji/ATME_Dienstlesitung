@@ -6,9 +6,14 @@ from phonenumber_field.modelfields import PhoneNumberField
 
 class CustomUser(AbstractUser):
     USER_CHOICES = [
-            ('SECURITY', 'Security Guard'),('CLEANER', 'Cleaner'),
-            ('FRONTEND_DEV', 'Frontend Developer'),('BACKEND_DEV', 'Backend Developer'),
-            ('AI_DEV', 'AI Developer'),('FULLSTACK_DEV', 'FullStack Developer'),('DATA_ENTRY' , 'Data Entry')
+            ('SECURITY', 'Security Guard'),
+            ('CLEANER', 'Cleaner'),
+            ('FRONTEND_DEV', 'Frontend Developer'),
+            ('BACKEND_DEV', 'Backend Developer'),
+            ('AI_DEV', 'AI Developer'),
+            ('FULLSTACK_DEV', 'FullStack Developer'),
+            ('DATA_ENTRY' , 'Data Entry'),
+            ('MANAGER', 'Manager')
 
     ]   
     LEVEL_CHOICES = [

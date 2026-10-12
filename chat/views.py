@@ -1,185 +1,318 @@
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from rest_framework import status
+from pathlib import Path
+
+from django.http import FileResponse, Http404
+from django.shortcuts import get_object_or_404
+
+from rest_framework.decorators import (
+    api_view,
+    permission_classes,
+)
 from rest_framework.pagination import PageNumberPagination
-from django.contrib.auth import get_user_model
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
+from rest_framework.response import Response
 
-from .models import Conversation, Participant, Message
-from .serializers import ConversationSerializer, MessageSerializer
-from .permissions import is_manager
-
-User = get_user_model()
-
-
-def _is_participant(user, conversation):
-    return conversation.memberships.filter(user=user).exists()
-
-
-def _broadcast(conversation_id, message_data):
-    """Push a message to all WebSocket clients connected to this conversation."""
-    channel_layer = get_channel_layer()
-    if channel_layer is not None:
-        async_to_sync(channel_layer.group_send)(
-            f"chat_{conversation_id}",
-            {"type": "chat.message", "message": message_data},
-        )
+from .models import Conversation
+from .permissions import (
+    IsChatUser,
+    membership_for,
+    require_member,
+    visible_messages,
+)
+from .serializers import (
+    ConversationSerializer,
+    MessageSerializer,
+    GroupCreateSerializer,
+    GroupSettingsSerializer,
+    AddMembersSerializer,
+    MemberPermissionsSerializer,
+    MessageInputSerializer,
+    DirectInputSerializer,
+    PinInputSerializer,
+)
+from . import services
 
 
-# ==========================================
-# Conversations
-# ==========================================
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
+def validated(serializer_class, data):
+    serializer = serializer_class(data=data)
+    serializer.is_valid(raise_exception=True)
+    return serializer.validated_data
+
+
+def conversation_data(request, conversation):
+    return ConversationSerializer(
+        conversation,
+        context={"request": request},
+    ).data
+
+
+def accessible_conversation(request, pk):
+    conversation = get_object_or_404(
+        Conversation,
+        pk=pk,
+    )
+
+    require_member(request.user, conversation)
+
+    return conversation
+
+
+@api_view(["GET"])
+@permission_classes([IsChatUser])
 def get_my_conversations(request):
-    """List conversations the current user takes part in."""
-    queryset = Conversation.objects.filter(memberships__user=request.user).distinct()
-    serializer = ConversationSerializer(queryset, many=True)
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    conversations = (
+        Conversation.objects
+        .filter(memberships__user=request.user)
+        .distinct()
+    )
+
+    conversations = [
+        item
+        for item in conversations
+        if membership_for(request.user, item)
+    ]
+
+    return Response(
+        ConversationSerializer(
+            conversations,
+            many=True,
+            context={"request": request},
+        ).data
+    )
 
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@api_view(["POST"])
+@permission_classes([IsChatUser])
 def create_group(request):
-    """Managers create group conversations and add members."""
-    if not is_manager(request.user):
-        return Response({"error": "Only managers can create groups."}, status=status.HTTP_403_FORBIDDEN)
-
-    name = request.data.get('name')
-    if not name:
-        return Response({"error": "Group name is required."}, status=status.HTTP_400_BAD_REQUEST)
-
-    member_ids = request.data.get('members', []) or []
-    conversation = Conversation.objects.create(
-        conversation_type=Conversation.GROUP, name=name, created_by=request.user
+    data = validated(
+        GroupCreateSerializer,
+        request.data,
     )
-    # creator is the group admin
-    Participant.objects.create(conversation=conversation, user=request.user, role=Participant.ADMIN)
-    # add the requested members
-    valid_users = User.objects.filter(id__in=member_ids).exclude(id=request.user.id)
-    for member in valid_users:
-        Participant.objects.get_or_create(conversation=conversation, user=member)
 
-    serializer = ConversationSerializer(conversation)
-    return Response({"message": "Group created", "data": serializer.data}, status=status.HTTP_201_CREATED)
+    conversation = services.create_group(
+        request.user.pk,
+        data,
+    )
+
+    return Response(
+        conversation_data(request, conversation),
+        status=201,
+    )
 
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@api_view(["POST"])
+@permission_classes([IsChatUser])
 def create_direct(request):
-    """Start a direct conversation. Allowed only between a manager and an employee."""
-    target_id = request.data.get('user')
-    if not target_id:
-        return Response({"error": "Target 'user' id is required."}, status=status.HTTP_400_BAD_REQUEST)
-    try:
-        target = User.objects.get(pk=target_id)
-    except User.DoesNotExist:
-        return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
-    if target.id == request.user.id:
-        return Response({"error": "You cannot start a chat with yourself."}, status=status.HTTP_400_BAD_REQUEST)
-
-    # Core rule: a direct chat must involve a manager. Employees talk to each other in groups only.
-    if not (is_manager(request.user) or is_manager(target)):
-        return Response(
-            {"error": "Direct chats are only allowed between a manager and an employee. Employees must use groups."},
-            status=status.HTTP_403_FORBIDDEN,
-        )
-
-    # Return the existing direct conversation if one already exists.
-    existing = (
-        Conversation.objects.filter(conversation_type=Conversation.DIRECT, memberships__user=request.user)
-        .filter(memberships__user=target)
-        .first()
+    data = validated(
+        DirectInputSerializer,
+        request.data,
     )
-    if existing:
-        return Response(
-            {"message": "Conversation already exists", "data": ConversationSerializer(existing).data},
-            status=status.HTTP_200_OK,
+
+    conversation, created = services.create_direct(
+        request.user.pk,
+        data["user"],
+    )
+
+    return Response(
+        conversation_data(request, conversation),
+        status=201 if created else 200,
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsChatUser])
+def get_conversation_detail(request, pk):
+    conversation = accessible_conversation(
+        request,
+        pk,
+    )
+
+    return Response(
+        conversation_data(request, conversation)
+    )
+
+
+@api_view(["PATCH"])
+@permission_classes([IsChatUser])
+def group_settings(request, pk):
+    data = validated(
+        GroupSettingsSerializer,
+        request.data,
+    )
+
+    conversation = services.change_settings(
+        request.user.pk,
+        pk,
+        data,
+    )
+
+    return Response(
+        conversation_data(request, conversation)
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsChatUser])
+def add_participants(request, pk):
+    data = validated(
+        AddMembersSerializer,
+        request.data,
+    )
+
+    added = services.add_members(
+        request.user.pk,
+        pk,
+        data,
+    )
+
+    return Response({"added": added})
+
+
+@api_view(["PATCH", "DELETE"])
+@permission_classes([IsChatUser])
+def member_detail(request, pk, user_id):
+    if request.method == "DELETE":
+        services.change_member(
+            request.user.pk,
+            pk,
+            user_id,
+            remove=True,
         )
 
-    conversation = Conversation.objects.create(conversation_type=Conversation.DIRECT, created_by=request.user)
-    Participant.objects.create(conversation=conversation, user=request.user)
-    Participant.objects.create(conversation=conversation, user=target)
+        return Response(status=204)
 
-    serializer = ConversationSerializer(conversation)
-    return Response({"message": "Direct conversation created", "data": serializer.data}, status=status.HTTP_201_CREATED)
+    data = validated(
+        MemberPermissionsSerializer,
+        request.data,
+    )
 
+    services.change_member(
+        request.user.pk,
+        pk,
+        user_id,
+        data=data,
+    )
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def get_conversation_detail(request, pk):
-    try:
-        conversation = Conversation.objects.get(pk=pk)
-    except Conversation.DoesNotExist:
-        return Response({"error": "Conversation not found"}, status=status.HTTP_404_NOT_FOUND)
-    if not _is_participant(request.user, conversation):
-        return Response({"error": "You are not a participant of this conversation."}, status=status.HTTP_403_FORBIDDEN)
-    serializer = ConversationSerializer(conversation)
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    return Response({
+        "message": "Permissions updated."
+    })
 
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def add_participants(request, pk):
-    """Managers add members to a group."""
-    try:
-        conversation = Conversation.objects.get(pk=pk)
-    except Conversation.DoesNotExist:
-        return Response({"error": "Conversation not found"}, status=status.HTTP_404_NOT_FOUND)
-    if conversation.conversation_type != Conversation.GROUP:
-        return Response({"error": "Members can only be added to groups."}, status=status.HTTP_400_BAD_REQUEST)
-    if not is_manager(request.user):
-        return Response({"error": "Only managers can manage group members."}, status=status.HTTP_403_FORBIDDEN)
-
-    member_ids = request.data.get('members', []) or []
-    valid_users = User.objects.filter(id__in=member_ids)
-    added = []
-    for member in valid_users:
-        _, created = Participant.objects.get_or_create(conversation=conversation, user=member)
-        if created:
-            added.append(member.username)
-    return Response({"message": "Members added", "added": added}, status=status.HTTP_200_OK)
-
-
-# ==========================================
-# Messages
-# ==========================================
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@api_view(["GET"])
+@permission_classes([IsChatUser])
 def get_messages(request, pk):
-    try:
-        conversation = Conversation.objects.get(pk=pk)
-    except Conversation.DoesNotExist:
-        return Response({"error": "Conversation not found"}, status=status.HTTP_404_NOT_FOUND)
-    if not _is_participant(request.user, conversation):
-        return Response({"error": "You are not a participant of this conversation."}, status=status.HTTP_403_FORBIDDEN)
+    conversation = accessible_conversation(
+        request,
+        pk,
+    )
 
-    queryset = conversation.messages.select_related('sender').all()
+    queryset = visible_messages(
+        request.user,
+        conversation,
+    ).order_by("-created_at", "-id")
+
     paginator = PageNumberPagination()
     paginator.page_size = 30
-    paginator.page_size_query_param = 'page_size'
-    page = paginator.paginate_queryset(queryset, request)
-    serializer = MessageSerializer(page, many=True)
-    return paginator.get_paginated_response(serializer.data)
+    paginator.max_page_size = 100
+    paginator.page_size_query_param = "page_size"
+
+    page = paginator.paginate_queryset(
+        queryset,
+        request,
+    )
+
+    return paginator.get_paginated_response(
+        MessageSerializer(page, many=True).data
+    )
 
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@api_view(["GET"])
+@permission_classes([IsChatUser])
+def get_pinned_messages(request, pk):
+    conversation = accessible_conversation(
+        request,
+        pk,
+    )
+
+    messages = visible_messages(
+        request.user,
+        conversation,
+    ).filter(is_pinned=True)
+
+    return Response(
+        MessageSerializer(messages, many=True).data
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsChatUser])
 def send_message(request, pk):
-    try:
-        conversation = Conversation.objects.get(pk=pk)
-    except Conversation.DoesNotExist:
-        return Response({"error": "Conversation not found"}, status=status.HTTP_404_NOT_FOUND)
-    if not _is_participant(request.user, conversation):
-        return Response({"error": "You are not a participant of this conversation."}, status=status.HTTP_403_FORBIDDEN)
+    data = validated(
+        MessageInputSerializer,
+        request.data,
+    )
 
-    serializer = MessageSerializer(data=request.data)
-    if serializer.is_valid():
-        serializer.save(sender=request.user, conversation=conversation)
-        conversation.save()  # bump updated_at so the conversation rises to the top
-        _broadcast(conversation.id, serializer.data)  # live push to WebSocket clients
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    message = services.create_message(
+        request.user.pk,
+        pk,
+        data,
+    )
+
+    return Response(
+        MessageSerializer(message).data,
+        status=201,
+    )
+
+
+@api_view(["PATCH"])
+@permission_classes([IsChatUser])
+def message_pin(request, pk, message_id):
+    data = validated(
+        PinInputSerializer,
+        request.data,
+    )
+
+    message = services.pin_message(
+        request.user.pk,
+        pk,
+        message_id,
+        data["is_pinned"],
+    )
+
+    return Response(
+        MessageSerializer(message).data
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsChatUser])
+def message_image(request, pk, message_id):
+    conversation = accessible_conversation(
+        request,
+        pk,
+    )
+
+    message = get_object_or_404(
+        visible_messages(
+            request.user,
+            conversation,
+        ),
+        pk=message_id,
+    )
+
+    if not message.image:
+        raise Http404
+
+    try:
+        image = message.image.open("rb")
+    except FileNotFoundError:
+        raise Http404
+
+    response = FileResponse(
+        image,
+        as_attachment=True,
+        filename=Path(message.image.name).name,
+    )
+
+    response["Cache-Control"] = "private, no-store"
+    response["X-Content-Type-Options"] = "nosniff"
+
+    return response
