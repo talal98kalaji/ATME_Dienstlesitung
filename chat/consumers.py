@@ -2,15 +2,11 @@ import asyncio
 import time
 
 from channels.db import database_sync_to_async
-from channels.generic.websocket import (
-    AsyncJsonWebsocketConsumer,
-)
-
+from channels.generic.websocket import (AsyncJsonWebsocketConsumer,)
+from rest_framework_simplejwt.authentication import (JWTAuthentication)
 from django.http import Http404
 from django.shortcuts import get_object_or_404
-
 from rest_framework.exceptions import APIException
-
 from .models import Conversation
 from .permissions import require_member, visible_messages
 from .serializers import (
@@ -155,7 +151,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
     @database_sync_to_async
     def access_allowed(self):
         try:
-            actor = services.fresh_user(self.user_id)
+            actor = self.authenticated_user()
 
             conversation = Conversation.objects.get(
                 pk=self.conversation_id
@@ -173,18 +169,25 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
     @database_sync_to_async
     def save_message(self, data):
-        serializer = MessageInputSerializer(data=data)
-        serializer.is_valid(raise_exception=True)
+        actor = self.authenticated_user()
+
+        serializer = MessageInputSerializer(
+            data=data
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
 
         services.create_message(
-            self.user_id,
+            actor.pk,
             self.conversation_id,
             serializer.validated_data,
         )
 
     @database_sync_to_async
     def event_payload(self, message_id):
-        actor = services.fresh_user(self.user_id)
+        actor = self.authenticated_user()
 
         conversation = get_object_or_404(
             Conversation,
@@ -195,7 +198,7 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 
         if message_id is None:
             return {
-                "type": "conversation_updated"
+                "type": "conversation_updated",
             }
 
         message = (
@@ -211,3 +214,12 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             "type": "message",
             "data": MessageSerializer(message).data,
         }
+
+        def authenticated_user(self):
+            authentication = JWTAuthentication()
+
+            token = authentication.get_validated_token(
+                self.scope.get("jwt_token") or ""
+            )
+
+        return authentication.get_user(token)

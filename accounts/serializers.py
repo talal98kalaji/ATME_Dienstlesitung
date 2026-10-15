@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
-
+from .password_validation import validate_api_password
+from .password_services import login_payload
 from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -93,12 +94,16 @@ class AccountsSerializers(serializers.ModelSerializer):
 class EmployeeCreateSerializer(serializers.ModelSerializer):
     password_confirm = serializers.CharField(
         write_only=True,
-        style={'input_type': 'password'}
+        trim_whitespace=False,
+        max_length=128,
+        style={"input_type": "password"},
+        label="Verify your password",
     )
 
     class Meta:
         model = User
-
+        extra_kwargs = {"password": {"write_only": True,"trim_whitespace": False,
+                        "max_length": 128,"style": {"input_type": "password",},},}
         fields = [
             'username',
             'password',
@@ -136,6 +141,18 @@ class EmployeeCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 'password': 'Passwords do not match.'
             })
+
+        candidate = User(
+            username=data.get("username", ""),
+            email=data.get("email", ""),
+            first_name=data.get("first_name", ""),
+            last_name=data.get("last_name", ""),
+        )
+
+        validate_api_password(
+            password,
+            candidate,
+        )
 
         username = data.get('username')
 
@@ -204,18 +221,8 @@ class EmployeeUpdateSerializer(serializers.ModelSerializer):
 
 class CustomLoginSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
-        data = super().validate(attrs)
-
-        data['user'] = {
-            'id': self.user.id,
-            'username': self.user.username,
-            'user_type': self.user.user_type,
-            'level': self.user.level,
-            'first_name': self.user.first_name,
-            'last_name': self.user.last_name,
-            'is_superuser': self.user.is_superuser,
-            'is_staff': self.user.is_staff,
-            'is_active': self.user.is_active,
-        }
-
-        return data
+        return login_payload(
+            attrs["username"],
+            attrs["password"],
+            request=self.context.get("request"),
+        )

@@ -1,4 +1,5 @@
 from django.db import models
+from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.core.validators import RegexValidator
 from phonenumber_field.modelfields import PhoneNumberField
@@ -33,4 +34,45 @@ class CustomUser(AbstractUser):
 
     def __str__(self):
         return f"{self.username} - {self.get_user_type_display()}"
-    
+
+
+class LoginSecurity(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        primary_key=True,
+        related_name="login_security",
+    )
+
+    failed_attempts = models.PositiveIntegerField(
+        default=0,
+    )
+
+    locked_until = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    reset_token_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+    )
+
+    reset_password_snapshot = models.TextField(
+        blank=True,
+        default="",
+    )
+
+    reset_expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    reset_issued_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="issued_password_resets",
+    )
